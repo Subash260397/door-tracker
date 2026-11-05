@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<title>Door Tracker</title>
+<style>
+:root{
+  --bg:#f4f5f7;--card:#ffffff;--text:#14171c;--muted:#6b7280;--line:#e5e7eb;
+  --in:#15803d;--in-soft:#dcfce7;--out:#475569;--out-soft:#e2e8f0;
+  --accent:#2563eb;--accent-text:#ffffff;--danger:#b91c1c;--bar:#e5e7eb;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0b0d10;--card:#16191e;--text:#eef0f3;--muted:#9aa3ae;--line:#262b33;
+  --in:#4ade80;--in-soft:#12301d;--out:#94a3b8;--out-soft:#1e242c;
+  --accent:#60a5fa;--accent-text:#0b0d10;--danger:#f87171;--bar:#262b33;
+}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:16px 16px calc(24px + env(safe-area-inset-bottom));-webkit-tap-highlight-color:transparent}
+main{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;justify-content:space-between;align-items:baseline}
+h1{font-size:20px;margin:0}
+.date{color:var(--muted);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.pill{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:999px}
+.pill.in{background:var(--in-soft);color:var(--in)}
+.pill.out{background:var(--out-soft);color:var(--out)}
+.timer{font-size:52px;font-weight:700;font-variant-numeric:tabular-nums;margin:10px 0 2px;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:14px}
+.progress{height:10px;background:var(--bar);border-radius:999px;overflow:hidden;margin:14px 0}
+.progress > div{height:100%;background:var(--in);width:0;transition:width .4s}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat .k{font-size:12px;color:var(--muted)}
+.stat .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+button{font:inherit;border:0;border-radius:14px;cursor:pointer}
+.big{width:100%;padding:18px;font-size:19px;font-weight:700;background:var(--accent);color:var(--accent-text)}
+.big:active{transform:scale(.99)}
+.link{background:none;color:var(--accent);padding:6px 0;font-size:14px}
+.link.danger{color:var(--danger)}
+h2{font-size:15px;margin:0 0 10px}
+ul{list-style:none;margin:0;padding:0}
+li.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+li.row:first-child{border-top:0}
+.tag{font-size:12px;font-weight:700;width:38px}
+.tag.in{color:var(--in)}.tag.out{color:var(--out)}
+.mini{flex:1;height:6px;background:var(--bar);border-radius:999px;margin:0 10px;overflow:hidden}
+.mini > div{height:100%;background:var(--in)}
+.empty{color:var(--muted);font-size:14px}
+.warn{color:var(--danger);font-size:12px}
+details summary{cursor:pointer;font-weight:600;font-size:15px}
+.field{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;font-size:14px}
+input[type=number]{width:80px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
+code{display:block;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px;font-size:13px;margin-top:6px}
+.btns{display:flex;gap:16px;flex-wrap:wrap}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(120px);
+  background:var(--text);color:var(--bg);padding:12px 18px;border-radius:12px;font-weight:600;max-width:calc(100% - 32px);
+  transition:transform .25s;text-align:center;z-index:9}
+#toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Door Tracker</h1><span class="date" id="today"></span></header>
+
+  <section class="card">
+    <span class="pill out" id="pill">OUTSIDE</span>
+    <div class="timer" id="timer">0:00:00</div>
+    <div class="sub" id="target">inside today · target 9h</div>
+    <div class="progress"><div id="bar"></div></div>
+    <div class="stats">
+      <div class="stat"><div class="k">First IN</div><div class="v" id="first">—</div></div>
+      <div class="stat"><div class="k">Leave at</div><div class="v" id="leave">—</div></div>
+      <div class="stat"><div class="k">Remaining</div><div class="v" id="remain">—</div></div>
+    </div>
+  </section>
+
+  <button class="big" id="tapBtn">Tap IN</button>
+
+  <section class="card">
+    <h2>Today's taps</h2>
+    <ul id="taps"></ul>
+    <button class="link danger" id="undoBtn" hidden>Undo last tap</button>
+  </section>
+
+  <section class="card">
+    <h2>Last 7 days <span class="sub" id="weekTotal"></span></h2>
+    <ul id="week"></ul>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Settings &amp; backup</summary>
+      <div class="field"><label for="targetIn">Daily target (hours)</label>
+        <input type="number" id="targetIn" min="1" max="16" step="0.5"></div>
+      <div class="field" style="display:block">URL to write on the NFC tag:
+        <code id="tagUrl"></code></div>
+      <div class="btns" style="margin-top:8px">
+        <button class="link" id="copyBtn">Copy tag URL</button>
+        <button class="link" id="exportBtn">Export backup</button>
+        <button class="link" id="importBtn">Import backup</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <p class="sub">Your data stays only on this phone, in this browser.</p>
+    </details>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  var KEY = "doortracker.v1", DEBOUNCE_MS = 60000, KEEP_DAYS = 180;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function load() {
+    try {
+      var d = JSON.parse(localStorage.getItem(KEY));
+      if (d && typeof d.days === "object") { if (!d.target) d.target = 9; return d; }
+    } catch (e) {}
+    return { target: 9, days: {} };
+  }
+  var data = load();
+
+  function save() {
+    var keys = Object.keys(data.days).sort();
+    while (keys.length > KEEP_DAYS) delete data.days[keys.shift()];
+    try { localStorage.setItem(KEY, JSON.stringify(data)); }
+    catch (e) { toast("Could not save: browser storage is blocked"); }
+  }
+
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function dayKey(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function fmtTime(d) { return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
+  function fmtDur(ms) { var m = Math.max(0, Math.round(ms / 60000)); return Math.floor(m / 60) + "h " + pad(m % 60) + "m"; }
+  function fmtClock(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000));
+    return Math.floor(s / 3600) + ":" + pad(Math.floor(s / 60) % 60) + ":" + pad(s % 60);
+  }
+  function targetMs() { return data.target * 3600000; }
+
+  function summarize(events, now, isToday) {
+    var total = 0, openIn = null;
+    events.forEach(function (e) {
+      var t = new Date(e.t);
+      if (e.type === "IN") openIn = t;
+      else if (openIn) { total += t - openIn; openIn = null; }
+    });
+    var inside = isToday && openIn !== null;
+    if (inside) total += now - openIn;
+    var remaining = Math.max(0, targetMs() - total);
+    return {
+      inside: inside, total: total, remaining: remaining,
+      first: events.length ? new Date(events[0].t) : null,
+      leaveAt: inside ? new Date(now.getTime() + remaining) : null,
+      forgotOut: !isToday && openIn !== null
+    };
+  }
+
+  function todayEvents(create) {
+    var k = dayKey(new Date());
+    if (!data.days[k] && create) data.days[k] = [];
+    return data.days[k] || [];
+  }
+
+  function doTap() {
+    var now = new Date(), ev = todayEvents(true), last = ev[ev.length - 1];
+    if (last && now - new Date(last.t) < DEBOUNCE_MS) {
+      toast("Already recorded " + last.type + " at " + fmtTime(new Date(last.t)));
+      return;
+    }
+    var type = last && last.type === "IN" ? "OUT" : "IN";
+    ev.push({ t: now.toISOString(), type: type });
+    save();
+    var s = summarize(ev, now, true);
+    if (navigator.vibrate) navigator.vibrate(type === "IN" ? 60 : [40, 60, 40]);
+    if (type === "IN") {
+      toast(s.remaining > 0 ? "IN " + fmtTime(now) + " · Leave at " + fmtTime(s.leaveAt)
+                            : "IN " + fmtTime(now) + " · Target already done ✅");
+    } else {
+      toast("OUT " + fmtTime(now) + " · Inside today " + fmtDur(s.total));
+    }
+    render();
+  }
+
+  var toastTimer;
+  function toast(msg) {
+    var t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 4000);
+  }
+
+  function li(html) { var e = document.createElement("li"); e.className = "row"; e.innerHTML = html; return e; }
+
+  function render() {
+    var now = new Date(), ev = todayEvents(false), s = summarize(ev, now, true);
+    $("today").textContent = now.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+    $("pill").textContent = s.inside ? "INSIDE" : "OUTSIDE";
+    $("pill").className = "pill " + (s.inside ? "in" : "out");
+    $("timer").textContent = fmtClock(s.total);
+    $("target").textContent = "inside today · target " + data.target + "h";
+    $("bar").style.width = Math.min(100, s.total / targetMs() * 100) + "%";
+    $("first").textContent = s.first ? fmtTime(s.first) : "—";
+    $("leave").textContent = s.total >= targetMs() ? "Done ✅" : (s.inside ? fmtTime(s.leaveAt) : "—");
+    $("remain").textContent = fmtDur(s.remaining);
+    $("tapBtn").textContent = s.inside ? "Tap OUT" : "Tap IN";
+
+    var taps = $("taps"); taps.innerHTML = "";
+    if (!ev.length) taps.innerHTML = '<li class="empty">No taps yet today</li>';
+    ev.forEach(function (e) {
+      taps.appendChild(li('<span class="tag ' + e.type.toLowerCase() + '">' + e.type + "</span><span>" + fmtTime(new Date(e.t)) + "</span>"));
+    });
+    $("undoBtn").hidden = !ev.length;
+
+    var week = $("week"), wk = 0, any = false; week.innerHTML = "";
+    for (var i = 1; i <= 7; i++) {
+      var d = new Date(now); d.setDate(d.getDate() - i);
+      var de = data.days[dayKey(d)];
+      if (!de || !de.length) continue;
+      any = true;
+      var x = summarize(de, now, false); wk += x.total;
+      var pct = Math.min(100, x.total / targetMs() * 100);
+      week.appendChild(li("<span>" + d.toLocaleDateString([], { weekday: "short", day: "numeric" }) + "</span>" +
+        '<span class="mini"><div style="width:' + pct + '%"></div></span>' +
+        "<span>" + fmtDur(x.total) + (x.forgotOut ? ' <span class="warn">forgot OUT</span>' : "") + "</span>"));
+    }
+    if (!any) week.innerHTML = '<li class="empty">No history yet</li>';
+    $("weekTotal").textContent = any ? "· " + fmtDur(wk) : "";
+  }
+
+  $("tapBtn").onclick = doTap;
+  $("undoBtn").onclick = function () {
+    var ev = todayEvents(false), last = ev[ev.length - 1];
+    if (!last || !confirm("Remove last tap: " + last.type + " at " + fmtTime(new Date(last.t)) + "?")) return;
+    ev.pop(); save(); render(); toast("Last tap removed");
+  };
+
+  var tagUrl = location.origin + location.pathname + "?tap";
+  $("tagUrl").textContent = tagUrl;
+  $("copyBtn").onclick = function () {
+    if (navigator.clipboard) navigator.clipboard.writeText(tagUrl).then(function () { toast("Copied"); }, function () { toast("Copy failed: select the text"); });
+    else toast("Select and copy the text above");
+  };
+  $("targetIn").value = data.target;
+  $("targetIn").onchange = function () {
+    var v = parseFloat(this.value);
+    if (v >= 1 && v <= 16) { data.target = v; save(); render(); } else this.value = data.target;
+  };
+  $("exportBtn").onclick = function () {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+    a.download = "door-tracker-backup-" + dayKey(new Date()) + ".json";
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  $("importBtn").onclick = function () { $("importFile").click(); };
+  $("importFile").onchange = function () {
+    var f = this.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var d = JSON.parse(r.result);
+        if (!d || typeof d.days !== "object") throw 0;
+        if (!confirm("Replace current data with this backup?")) return;
+        data = { target: d.target || 9, days: d.days }; save(); render();
+        $("targetIn").value = data.target; toast("Backup restored");
+      } catch (e) { toast("Not a valid backup file"); }
+    };
+    r.readAsText(f); this.value = "";
+  };
+
+  // Opened from the NFC tag (…?tap): record once, then clean the URL so refresh doesn't tap again.
+  if (/[?&]tap\b/.test(location.search)) {
+    history.replaceState(null, "", location.pathname);
+    doTap();
+  }
+  render();
+  setInterval(render, 1000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) render(); });
+})();
+</script>
+</body>
+</html>
