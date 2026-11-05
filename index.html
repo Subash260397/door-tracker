@@ -59,6 +59,17 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
   background:var(--text);color:var(--bg);padding:12px 18px;border-radius:12px;font-weight:600;max-width:calc(100% - 32px);
   transition:transform .25s;text-align:center;z-index:9}
 #toast.show{transform:translateX(-50%) translateY(0)}
+#result{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+#result[hidden]{display:none}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px;width:100%;max-width:400px;text-align:center}
+.sheet .pill{margin-bottom:6px}
+.sheet .when{color:var(--muted);font-size:15px}
+.sheet .label{color:var(--muted);font-size:13px;margin-top:16px}
+.sheet .huge{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.sheet .rows{margin:16px 0 18px;border-top:1px solid var(--line)}
+.sheet .rows div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.sheet .rows span:first-child{color:var(--muted)}
+.sheet .rows b.done{color:var(--in)}
 </style>
 </head>
 <body>
@@ -68,7 +79,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
   <section class="card">
     <span class="pill out" id="pill">OUTSIDE</span>
     <div class="timer" id="timer">0:00:00</div>
-    <div class="sub" id="target">inside today · target 9h</div>
+    <div class="sub" id="target">inside today · target 8h</div>
     <div class="progress"><div id="bar"></div></div>
     <div class="stats">
       <div class="stat"><div class="k">First IN</div><div class="v" id="first">—</div></div>
@@ -108,6 +119,16 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
   </section>
 </main>
 <div id="toast"></div>
+<div id="result" hidden>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <span class="pill" id="rPill"></span>
+    <div class="when" id="rWhen"></div>
+    <div class="label" id="rLabel"></div>
+    <div class="huge" id="rHuge"></div>
+    <div class="rows" id="rRows"></div>
+    <button class="big" id="rClose">OK</button>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -118,9 +139,13 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
   function load() {
     try {
       var d = JSON.parse(localStorage.getItem(KEY));
-      if (d && typeof d.days === "object") { if (!d.target) d.target = 9; return d; }
+      if (d && typeof d.days === "object") {
+        if (!d.v2) { d.target = 8; d.v2 = true; }   // one-time switch of the old 9h default to 8h
+        if (!d.target) d.target = 8;
+        return d;
+      }
     } catch (e) {}
-    return { target: 9, days: {} };
+    return { target: 8, v2: true, days: {} };
   }
   var data = load();
 
@@ -176,14 +201,41 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
     save();
     var s = summarize(ev, now, true);
     if (navigator.vibrate) navigator.vibrate(type === "IN" ? 60 : [40, 60, 40]);
-    if (type === "IN") {
-      toast(s.remaining > 0 ? "IN " + fmtTime(now) + " · Leave at " + fmtTime(s.leaveAt)
-                            : "IN " + fmtTime(now) + " · Target already done ✅");
-    } else {
-      toast("OUT " + fmtTime(now) + " · Inside today " + fmtDur(s.total));
-    }
     render();
+    if (type === "IN") {
+      showResult("IN", now, "Inside so far today", fmtDur(s.total), [
+        ["Target", data.target + "h"],
+        ["Remaining", s.remaining > 0 ? fmtDur(s.remaining) : "0h 00m"],
+        ["Leave at", s.remaining > 0 ? fmtTime(s.leaveAt) : "Target done ✅", s.remaining <= 0]
+      ]);
+    } else {
+      var inTime = new Date(last.t);
+      var done = s.remaining <= 0;
+      showResult("OUT", now, "Total inside today", fmtDur(s.total), [
+        ["This visit", fmtTime(inTime) + " → " + fmtTime(now)],
+        ["This visit time", fmtDur(now - inTime)],
+        ["Target", data.target + "h"],
+        [done ? "Status" : "Remaining", done ? "Target done ✅" : fmtDur(s.remaining), done]
+      ]);
+    }
   }
+
+  function showResult(type, when, label, huge, rows) {
+    $("rPill").textContent = type === "IN" ? "TAPPED IN" : "TAPPED OUT";
+    $("rPill").className = "pill " + (type === "IN" ? "in" : "out");
+    $("rWhen").textContent = fmtTime(when);
+    $("rLabel").textContent = label;
+    $("rHuge").textContent = huge;
+    var box = $("rRows"); box.innerHTML = "";
+    rows.forEach(function (r) {
+      var div = document.createElement("div");
+      var a = document.createElement("span"); a.textContent = r[0];
+      var b = document.createElement("b"); b.textContent = r[1]; if (r[2]) b.className = "done";
+      div.appendChild(a); div.appendChild(b); box.appendChild(div);
+    });
+    $("result").hidden = false;
+  }
+  $("rClose").onclick = function () { $("result").hidden = true; };
 
   var toastTimer;
   function toast(msg) {
@@ -262,7 +314,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
         var d = JSON.parse(r.result);
         if (!d || typeof d.days !== "object") throw 0;
         if (!confirm("Replace current data with this backup?")) return;
-        data = { target: d.target || 9, days: d.days }; save(); render();
+        data = { target: d.target || 8, v2: true, days: d.days }; save(); render();
         $("targetIn").value = data.target; toast("Backup restored");
       } catch (e) { toast("Not a valid backup file"); }
     };
