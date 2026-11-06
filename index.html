@@ -110,6 +110,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
         <code id="tagUrl"></code></div>
       <div class="btns" style="margin-top:8px">
         <button class="link" id="copyBtn">Copy tag URL</button>
+        <button class="link" id="reportBtn">Download report</button>
         <button class="link" id="exportBtn">Export backup</button>
         <button class="link" id="importBtn">Import backup</button>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
@@ -299,11 +300,55 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
     var v = parseFloat(this.value);
     if (v >= 1 && v <= 16) { data.target = v; save(); render(); } else this.value = data.target;
   };
-  $("exportBtn").onclick = function () {
+  function download(text, type, name) {
     var a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
-    a.download = "door-tracker-backup-" + dayKey(new Date()) + ".json";
+    a.href = URL.createObjectURL(new Blob([text], { type: type }));
+    a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // Readable report: date & time on the left, IN/OUT on the right;
+  // each day ends with total hours (left) and Complete / Incomplete (right).
+  function buildReport() {
+    var now = new Date(), todayK = dayKey(now), complete = 0, closedDays = 0, body = "";
+    var keys = Object.keys(data.days).filter(function (k) { return data.days[k].length; }).sort();
+    keys.forEach(function (k) {
+      var ev = data.days[k], isToday = k === todayK, s = summarize(ev, now, isToday);
+      var dLabel = new Date(k + "T00:00:00").toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+      var status, cls;
+      if (s.total >= targetMs()) { status = "Complete"; cls = "ok"; }
+      else if (isToday) { status = "In progress"; cls = "prog"; }
+      else { status = "Incomplete" + (s.forgotOut ? " (forgot OUT)" : ""); cls = "bad"; }
+      if (!isToday || cls === "ok") { closedDays++; if (cls === "ok") complete++; }
+
+      body += '<table><tbody>';
+      ev.forEach(function (e) {
+        body += "<tr><td>" + dLabel + "&nbsp;&nbsp;" + fmtTime(new Date(e.t)) + '</td><td class="r">' + e.type + "</td></tr>";
+      });
+      body += '<tr class="tot"><td>Total: ' + fmtDur(s.total) + " / " + data.target + 'h</td><td class="r ' + cls + '">' + status + "</td></tr>";
+      body += "</tbody></table>";
+    });
+    if (!keys.length) body = "<p>No data yet.</p>";
+
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1"><title>Door Tracker report</title><style>' +
+      "body{margin:0;padding:16px;background:#fff;color:#111;font:15px/1.4 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}" +
+      ".wrap{max-width:560px;margin:0 auto}h1{font-size:22px;margin:0 0 4px}.meta{color:#555;font-size:13px;margin-bottom:18px}" +
+      "table{width:100%;border-collapse:collapse;border:1px solid #ccc;margin-bottom:14px;page-break-inside:avoid}" +
+      "td{padding:7px 10px;border-top:1px solid #eee;font-variant-numeric:tabular-nums}.r{text-align:right;font-weight:600;white-space:nowrap}" +
+      ".tot td{border-top:2px solid #999;font-weight:700;background:#fafafa}" +
+      ".ok{color:#15803d}.bad{color:#b91c1c}.prog{color:#b45309}" +
+      "</style></head><body><div class=\"wrap\"><h1>Door Tracker report</h1>" +
+      '<div class="meta">Generated ' + now.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" }) + " " + fmtTime(now) +
+      " · Target " + data.target + "h · Complete days: " + complete + " of " + closedDays + "</div>" +
+      body + "</div></body></html>";
+  }
+
+  $("reportBtn").onclick = function () {
+    download(buildReport(), "text/html", "door-tracker-report-" + dayKey(new Date()) + ".html");
+  };
+  $("exportBtn").onclick = function () {
+    download(JSON.stringify(data, null, 1), "application/json", "door-tracker-backup-" + dayKey(new Date()) + ".json");
   };
   $("importBtn").onclick = function () { $("importFile").click(); };
   $("importFile").onchange = function () {
