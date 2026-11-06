@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Door Tracker QR</title>
+<style>
+  body{margin:0;background:#fff;color:#111;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;justify-content:center}
+  .page{width:100%;max-width:600px;padding:32px 16px;text-align:center}
+  h1{font-size:34px;margin:0 0 6px}
+  .sub{font-size:18px;color:#444;margin:0 0 24px}
+  #qr{display:inline-block;padding:16px;border:3px solid #111;border-radius:16px}
+  #qr img,#qr canvas{display:block;width:300px;height:300px}
+  .steps{font-size:17px;margin:24px auto 0;line-height:1.7}
+  .url{font-size:12px;color:#666;margin-top:18px;word-break:break-all}
+  button{margin-top:24px;font-size:18px;padding:12px 28px;border:0;border-radius:10px;background:#2563eb;color:#fff;cursor:pointer}
+  @media print{button{display:none}.page{padding-top:10mm}}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Door Tracker</h1>
+  <p class="sub">Scan every time you go IN or OUT</p>
+  <div id="qr"></div>
+  <div class="steps">📷 Open camera → point at the code → tap the link</div>
+  <div class="url" id="url"></div>
+  <button onclick="window.print()">Print</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  var LINK = "https://subash260397.github.io/door-tracker/?tap";
+  document.getElementById("url").textContent = LINK;
+  new QRCode(document.getElementById("qr"), { text: LINK, width: 600, height: 600, correctLevel: QRCode.CorrectLevel.M });
+</script>
+</body>
+</html>
