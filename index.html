@@ -52,6 +52,8 @@ li.row:first-child{border-top:0}
 .warn{color:var(--danger);font-size:12px}
 details summary{cursor:pointer;font-weight:600;font-size:15px}
 .field{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;font-size:14px}
+.hm{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.hm input[type=number]{width:58px;text-align:center}
 input[type=number]{width:80px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
 code{display:block;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px;font-size:13px;margin-top:6px}
 .btns{display:flex;gap:16px;flex-wrap:wrap}
@@ -104,8 +106,9 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
   <section class="card">
     <details>
       <summary>Settings &amp; backup</summary>
-      <div class="field"><label for="targetIn">Daily target (hours)</label>
-        <input type="number" id="targetIn" min="1" max="16" step="0.5"></div>
+      <div class="field"><label for="targetH">Daily target</label>
+        <span class="hm"><input type="number" id="targetH" min="1" max="16" step="1" inputmode="numeric"> h
+        <input type="number" id="targetM" min="0" max="59" step="1" inputmode="numeric"> m</span></div>
       <div class="field" style="display:block">URL to write on the NFC tag:
         <code id="tagUrl"></code></div>
       <div class="btns" style="margin-top:8px">
@@ -166,6 +169,8 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
     return Math.floor(s / 3600) + ":" + pad(Math.floor(s / 60) % 60) + ":" + pad(s % 60);
   }
   function targetMs() { return data.target * 3600000; }
+  function targetMin() { return Math.round(data.target * 60); }
+  function fmtTarget() { var m = targetMin(), h = Math.floor(m / 60); m = m % 60; return m ? h + "h " + pad(m) + "m" : h + "h"; }
 
   function summarize(events, now, isToday) {
     var total = 0, openIn = null;
@@ -205,7 +210,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
     render();
     if (type === "IN") {
       showResult("IN", now, "Inside so far today", fmtDur(s.total), [
-        ["Target", data.target + "h"],
+        ["Target", fmtTarget()],
         ["Remaining", s.remaining > 0 ? fmtDur(s.remaining) : "0h 00m"],
         ["Leave at", s.remaining > 0 ? fmtTime(s.leaveAt) : "Target done ✅", s.remaining <= 0]
       ]);
@@ -215,7 +220,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
       showResult("OUT", now, "Total inside today", fmtDur(s.total), [
         ["This visit", fmtTime(inTime) + " → " + fmtTime(now)],
         ["This visit time", fmtDur(now - inTime)],
-        ["Target", data.target + "h"],
+        ["Target", fmtTarget()],
         [done ? "Status" : "Remaining", done ? "Target done ✅" : fmtDur(s.remaining), done]
       ]);
     }
@@ -252,7 +257,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
     $("pill").textContent = s.inside ? "INSIDE" : "OUTSIDE";
     $("pill").className = "pill " + (s.inside ? "in" : "out");
     $("timer").textContent = fmtClock(s.total);
-    $("target").textContent = "inside today · target " + data.target + "h";
+    $("target").textContent = "inside today · target " + fmtTarget();
     $("bar").style.width = Math.min(100, s.total / targetMs() * 100) + "%";
     $("first").textContent = s.first ? fmtTime(s.first) : "—";
     $("leave").textContent = s.total >= targetMs() ? "Done ✅" : (s.inside ? fmtTime(s.leaveAt) : "—");
@@ -295,11 +300,18 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
     if (navigator.clipboard) navigator.clipboard.writeText(tagUrl).then(function () { toast("Copied"); }, function () { toast("Copy failed: select the text"); });
     else toast("Select and copy the text above");
   };
-  $("targetIn").value = data.target;
-  $("targetIn").onchange = function () {
-    var v = parseFloat(this.value);
-    if (v >= 1 && v <= 16) { data.target = v; save(); render(); } else this.value = data.target;
-  };
+  function showTarget() { var m = targetMin(); $("targetH").value = Math.floor(m / 60); $("targetM").value = m % 60; }
+  function setTarget() {
+    var h = parseInt($("targetH").value, 10), m = parseInt($("targetM").value || "0", 10);
+    var total = h * 60 + m;
+    if (h >= 0 && m >= 0 && m <= 59 && total >= 60 && total <= 16 * 60) {
+      data.target = total / 60; save(); render(); toast("Target set to " + fmtTarget());
+    }
+    showTarget();
+  }
+  showTarget();
+  $("targetH").onchange = setTarget;
+  $("targetM").onchange = setTarget;
   function download(text, type, name) {
     var a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([text], { type: type }));
@@ -325,7 +337,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
       ev.forEach(function (e) {
         body += "<tr><td>" + dLabel + "&nbsp;&nbsp;" + fmtTime(new Date(e.t)) + '</td><td class="r">' + e.type + "</td></tr>";
       });
-      body += '<tr class="tot"><td>Total: ' + fmtDur(s.total) + " / " + data.target + 'h</td><td class="r ' + cls + '">' + status + "</td></tr>";
+      body += '<tr class="tot"><td>Total: ' + fmtDur(s.total) + " / " + fmtTarget() + '</td><td class="r ' + cls + '">' + status + "</td></tr>";
       body += "</tbody></table>";
     });
     if (!keys.length) body = "<p>No data yet.</p>";
@@ -340,7 +352,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
       ".ok{color:#15803d}.bad{color:#b91c1c}.prog{color:#b45309}" +
       "</style></head><body><div class=\"wrap\"><h1>Door Tracker report</h1>" +
       '<div class="meta">Generated ' + now.toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" }) + " " + fmtTime(now) +
-      " · Target " + data.target + "h · Complete days: " + complete + " of " + closedDays + "</div>" +
+      " · Target " + fmtTarget() + " · Complete days: " + complete + " of " + closedDays + "</div>" +
       body + "</div></body></html>";
   }
 
@@ -360,7 +372,7 @@ code{display:block;word-break:break-all;background:var(--bg);border:1px solid va
         if (!d || typeof d.days !== "object") throw 0;
         if (!confirm("Replace current data with this backup?")) return;
         data = { target: d.target || 8, v2: true, days: d.days }; save(); render();
-        $("targetIn").value = data.target; toast("Backup restored");
+        showTarget(); toast("Backup restored");
       } catch (e) { toast("Not a valid backup file"); }
     };
     r.readAsText(f); this.value = "";
